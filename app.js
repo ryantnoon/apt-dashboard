@@ -215,7 +215,7 @@
     updateKPIs(filtered);
 
     if (filtered.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="11"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="13"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
       mobileCards.innerHTML = '<div class="no-results"><p>No buildings match your filters</p></div>';
       return;
     }
@@ -242,10 +242,13 @@
       html += '<td>' + escapeHTML(a.yearBuilt) + '</td>';
       html += '<td>' + (a.hasSpecial ? specialBadge(a.specials) : '<span class="badge badge-no">None</span>') + '</td>';
       html += '<td>' + escapeHTML(a.phone) + '</td>';
+      var emailDisplay = (a.email && a.email.indexOf('@') !== -1 && a.email.indexOf('N/A') === -1) ? '<a href="mailto:' + escapeHTML(a.email) + '">' + escapeHTML(a.email) + '</a>' : '<span style="color:var(--color-text-faint)">—</span>';
+      html += '<td>' + emailDisplay + '</td>';
+      html += '<td>' + (isValidURL(a.website) ? '<a href="' + escapeHTML(a.website) + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(a.name) + ' ↗</a>' : '<span style="color:var(--color-text-faint)">—</span>') + '</td>';
       html += '</tr>';
 
       if (isExpanded) {
-        html += '<tr class="expanded-row"><td colspan="11"><div class="expanded-content"><div class="expanded-grid">';
+        html += '<tr class="expanded-row"><td colspan="13"><div class="expanded-content"><div class="expanded-grid">';
         html += detailGroup("Address", a.address);
         html += detailGroup("Neighborhood", a.subNeighborhood);
         html += detailGroup("Management", a.management);
@@ -451,7 +454,7 @@
   /* CSV Export */
   exportBtn.addEventListener("click", function () {
     var filtered = getSorted(getFiltered());
-    var header = ["Building Name", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Specials", "Phone", "Website"];
+    var header = ["Building Name", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Specials", "Phone", "Email", "Website"];
     var rows = [header.join(",")];
     filtered.forEach(function (a) {
       rows.push([
@@ -468,6 +471,7 @@
         a.yearBuilt,
         '"' + a.specials + '"',
         a.phone,
+        '"' + a.email + '"',
         a.website
       ].join(","));
     });
