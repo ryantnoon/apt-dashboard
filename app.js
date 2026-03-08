@@ -164,6 +164,7 @@
       var va, vb;
       switch (state.sortKey) {
         case "name": va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
+        case "mgmt": va = a.management.toLowerCase(); vb = b.management.toLowerCase(); break;
         case "area": va = a.area; vb = b.area; break;
         case "price": va = a.priceLow || 99999; vb = b.priceLow || 99999; break;
         case "pool": va = a.poolYes ? 1 : 0; vb = b.poolYes ? 1 : 0; break;
@@ -215,7 +216,7 @@
     updateKPIs(filtered);
 
     if (filtered.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="13"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="14"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
       mobileCards.innerHTML = '<div class="no-results"><p>No buildings match your filters</p></div>';
       return;
     }
@@ -233,6 +234,7 @@
       html += '<tr data-name="' + escapeHTML(a.name) + '"' + (isCompared ? ' class="selected-row"' : '') + '>';
       html += '<td><input type="checkbox" class="compare-check" data-compare="' + escapeHTML(a.name) + '"' + (isCompared ? " checked" : "") + ' aria-label="Compare ' + escapeHTML(a.name) + '" title="Add to comparison"></td>';
       html += '<td><span class="building-name">' + escapeHTML(a.name) + '</span></td>';
+      html += '<td style="max-width:180px;white-space:normal;line-height:1.35">' + escapeHTML(a.management) + '</td>';
       html += '<td>' + escapeHTML(a.area) + '</td>';
       html += '<td class="price-range">' + priceRange + '</td>';
       html += '<td>' + badgeHTML(a.poolYes, a.pool) + '</td>';
@@ -248,7 +250,7 @@
       html += '</tr>';
 
       if (isExpanded) {
-        html += '<tr class="expanded-row"><td colspan="13"><div class="expanded-content"><div class="expanded-grid">';
+        html += '<tr class="expanded-row"><td colspan="14"><div class="expanded-content"><div class="expanded-grid">';
         html += detailGroup("Address", a.address);
         html += detailGroup("Neighborhood", a.subNeighborhood);
         html += detailGroup("Management", a.management);
@@ -416,6 +418,7 @@
     if (items.length === 0) return;
 
     var fields = [
+      ["Management", "management"],
       ["Area", "area"],
       ["Address", "address"],
       ["2BR Low", function (a) { return a.priceLow ? formatPrice(a.priceLow) : "Call"; }],
@@ -454,11 +457,12 @@
   /* CSV Export */
   exportBtn.addEventListener("click", function () {
     var filtered = getSorted(getFiltered());
-    var header = ["Building Name", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Specials", "Phone", "Email", "Website"];
+    var header = ["Building Name", "Management Company", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Specials", "Phone", "Email", "Website"];
     var rows = [header.join(",")];
     filtered.forEach(function (a) {
       rows.push([
         '"' + a.name + '"',
+        '"' + a.management + '"',
         '"' + a.area + '"',
         '"' + a.address + '"',
         a.priceLowRaw,
