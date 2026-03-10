@@ -31,6 +31,28 @@
     return lower.startsWith("yes");
   }
 
+  function isDogFriendly(breed, weight) {
+    /* "Dog Friendly" = no breed restrictions AND no restrictive weight limit (<50 lbs) */
+    var b = (breed || "").toLowerCase();
+    var w = (weight || "").toLowerCase();
+    /* Explicitly has breed restrictions */
+    var hasBR = b.indexOf("yes") !== -1 || b.indexOf("extensive") !== -1 || b.indexOf("standard restriction") !== -1;
+    /* "None" / "none listed" / "all breeds welcome" = no restrictions */
+    var noBR = b.indexOf("none") !== -1 || b === "";
+    /* Weight limit too low (under 50 lbs = not dog friendly for larger dogs) */
+    var weightMatch = w.match(/(\d+)/);
+    var restrictiveWeight = false;
+    if (weightMatch) {
+      var lbs = parseInt(weightMatch[1], 10);
+      if (lbs > 0 && lbs < 50) restrictiveWeight = true;
+    }
+    if (w.indexOf("small dogs only") !== -1) restrictiveWeight = true;
+    /* Dog friendly = no breed restrictions and no restrictive weight */
+    if (hasBR) return false;
+    if (restrictiveWeight) return false;
+    return true;
+  }
+
   function hasActiveSpecial(s) {
     if (!s) return false;
     var lower = s.toLowerCase();
@@ -64,6 +86,7 @@
       rooftop: d["Rooftop/Deck"] || "",
       dogPark: d["Dog Park/Run"] || "",
       dogParkYes: isYes(d["Dog Park/Run"]),
+      dogFriendly: isDogFriendly(d["Breed Restrictions"], d["Weight Limit"]),
       concierge: d["Concierge"] || "",
       conciergeYes: isYes(d["Concierge"]),
       amenities: d["Other Key Amenities"] || "",
@@ -103,7 +126,7 @@
   var state = {
     area: "All",
     search: "",
-    filters: { pool: false, dogpark: false, concierge: false, specials: false, statusActive: false, statusPass: false },
+    filters: { pool: false, dogpark: false, dogfriendly: false, concierge: false, specials: false, statusActive: false, statusPass: false },
     maxPrice: 7000,
     sortKey: null,
     sortAsc: true,
@@ -169,6 +192,7 @@
       }
       if (state.filters.pool && !a.poolYes) return false;
       if (state.filters.dogpark && !a.dogParkYes) return false;
+      if (state.filters.dogfriendly && !a.dogFriendly) return false;
       if (state.filters.concierge && !a.conciergeYes) return false;
       if (state.filters.specials && !a.hasSpecial) return false;
       if (state.filters.statusActive && getStatus(a.name) !== "active") return false;
@@ -223,7 +247,7 @@
     document.getElementById("kpiAvgPrice").textContent = formatPrice(avg);
 
     document.getElementById("kpiPool").textContent = filtered.filter(function (a) { return a.poolYes; }).length;
-    document.getElementById("kpiDogPark").textContent = filtered.filter(function (a) { return a.dogParkYes; }).length;
+    document.getElementById("kpiDogFriendly").textContent = filtered.filter(function (a) { return a.dogFriendly; }).length;
     document.getElementById("kpiSpecials").textContent = filtered.filter(function (a) { return a.hasSpecial; }).length;
   }
 
