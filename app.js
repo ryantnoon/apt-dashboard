@@ -94,9 +94,7 @@
       hasSpecial: hasActiveSpecial(d["Move-In Specials"]),
       parkingType: d["Parking Type"] || "",
       parkingCost: d["Parking Cost"] || "",
-      reservedParking: d["Reserved Parking"] || "",
-      evCharging: d["EV Charging"] || "",
-      parkingNotes: d["Parking Notes"] || ""
+      reservedParking: d["Reserved Parking"] || ""
     };
   }
 
@@ -317,8 +315,6 @@
         html += detailGroup("Parking Type", a.parkingType);
         html += detailGroup("Parking Cost", a.parkingCost);
         html += detailGroup("Reserved Parking", a.reservedParking);
-        html += detailGroup("EV Charging", a.evCharging);
-        html += detailGroup("Parking Notes", a.parkingNotes);
         html += detailGroup("Email", a.email);
         if (isValidURL(a.website)) {
           html += '<div class="detail-group"><div class="detail-label">Website</div><div class="detail-value"><a href="' + escapeHTML(a.website) + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(a.website) + '</a></div></div>';
@@ -548,7 +544,6 @@
       ["Parking Type", "parkingType"],
       ["Parking Cost", "parkingCost"],
       ["Reserved Parking", "reservedParking"],
-      ["EV Charging", "evCharging"],
       ["Specials", "specials"],
       ["Phone", "phone"]
     ];
@@ -573,7 +568,7 @@
   /* CSV Export */
   exportBtn.addEventListener("click", function () {
     var filtered = getSorted(getFiltered());
-    var header = ["Status", "Building Name", "Management Company", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Parking Type", "Parking Cost", "Reserved Parking", "EV Charging", "Specials", "Phone", "Email", "Website"];
+    var header = ["Status", "Building Name", "Management Company", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Parking Type", "Parking Cost", "Reserved Parking", "Specials", "Phone", "Email", "Website"];
     var rows = [header.join(",")];
     filtered.forEach(function (a) {
       rows.push([
@@ -593,7 +588,6 @@
         '"' + a.parkingType + '"',
         '"' + a.parkingCost + '"',
         '"' + a.reservedParking + '"',
-        '"' + a.evCharging + '"',
         '"' + a.specials + '"',
         a.phone,
         '"' + a.email + '"',
