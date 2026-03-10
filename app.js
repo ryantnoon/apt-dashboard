@@ -192,6 +192,7 @@
           vb = order[sb] !== undefined ? order[sb] : 1;
           break;
         case "name": va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
+        case "address": va = a.address.toLowerCase(); vb = b.address.toLowerCase(); break;
         case "mgmt": va = a.management.toLowerCase(); vb = b.management.toLowerCase(); break;
         case "area": va = a.area; vb = b.area; break;
         case "price": va = a.priceLow || 99999; vb = b.priceLow || 99999; break;
@@ -244,7 +245,7 @@
     updateKPIs(filtered);
 
     if (filtered.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="15"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="16"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
       mobileCards.innerHTML = '<div class="no-results"><p>No buildings match your filters</p></div>';
       return;
     }
@@ -263,6 +264,7 @@
       html += '<td><input type="checkbox" class="compare-check" data-compare="' + escapeHTML(a.name) + '"' + (isCompared ? " checked" : "") + ' aria-label="Compare ' + escapeHTML(a.name) + '" title="Add to comparison"></td>';
       html += statusCellHTML(a.name);
       html += '<td><span class="building-name">' + escapeHTML(a.name) + '</span></td>';
+      html += '<td style="max-width:220px;white-space:normal;line-height:1.35">' + escapeHTML(a.address) + '</td>';
       html += '<td style="max-width:180px;white-space:normal;line-height:1.35">' + escapeHTML(a.management) + '</td>';
       html += '<td>' + escapeHTML(a.area) + '</td>';
       html += '<td class="price-range">' + priceRange + '</td>';
@@ -279,7 +281,7 @@
       html += '</tr>';
 
       if (isExpanded) {
-        html += '<tr class="expanded-row"><td colspan="15"><div class="expanded-content"><div class="expanded-grid">';
+        html += '<tr class="expanded-row"><td colspan="16"><div class="expanded-content"><div class="expanded-grid">';
         html += detailGroup("Address", a.address);
         html += detailGroup("Neighborhood", a.subNeighborhood);
         html += detailGroup("Management", a.management);
