@@ -436,6 +436,7 @@ a, button, [role="button"], input, select { transition: color var(--transition-i
   overflow-x: auto;
 }
 
+table { table-layout: fixed; }
 table th {
   font-size: 10px;
   font-weight: 700;
@@ -452,10 +453,31 @@ table th {
   position: sticky;
   top: 0;
   z-index: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
 }
 table th:hover { color: var(--color-text); }
 table th .sort-icon { display: inline-block; margin-left: 4px; opacity: 0.4; }
 table th.sorted .sort-icon { opacity: 1; color: var(--color-primary); }
+
+/* COLUMN RESIZE HANDLE */
+.col-resize {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+}
+.col-resize:hover, .col-resize.dragging {
+  background: var(--color-primary);
+  opacity: 0.5;
+}
+body.col-resizing { cursor: col-resize !important; }
+body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
 
 table td {
   padding: var(--space-2) var(--space-3);
@@ -507,6 +529,10 @@ table tbody tr.selected-row { background: var(--color-primary-highlight); }
 .expanded-row td {
   padding: 0 !important;
   border-bottom: 2px solid var(--color-primary);
+  max-width: none !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  text-overflow: clip !important;
 }
 .expanded-content {
   padding: var(--space-4) var(--space-5);
@@ -521,6 +547,7 @@ table tbody tr.selected-row { background: var(--color-primary-highlight); }
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  min-width: 0;
 }
 .detail-label {
   font-size: var(--text-xs);
@@ -532,8 +559,10 @@ table tbody tr.selected-row { background: var(--color-primary-highlight); }
 .detail-value {
   font-size: var(--text-sm);
   color: var(--color-text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
-.detail-value a { color: var(--color-primary); }
+.detail-value a { color: var(--color-primary); word-break: break-all; }
 
 /* COMPARISON PANEL */
 .compare-panel {

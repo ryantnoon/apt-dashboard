@@ -627,10 +627,65 @@
     }
   })();
 
+  /* ── COLUMN RESIZE ──────────────────────────────────────────── */
+  function initColumnResize() {
+    var ths = Array.from(document.querySelectorAll(".table-scroll table thead th"));
+    var table = document.querySelector(".table-scroll table");
+    if (!table || ths.length === 0) return;
+
+    /* Set initial widths from computed sizes then lock to px */
+    var totalW = 0;
+    ths.forEach(function (th) {
+      var w = th.getBoundingClientRect().width;
+      th.style.width = w + "px";
+      totalW += w;
+    });
+    table.style.width = totalW + "px";
+
+    /* Inject resize handles */
+    ths.forEach(function (th) {
+      if (th.querySelector(".col-resize")) return;
+      var handle = document.createElement("div");
+      handle.className = "col-resize";
+      handle.setAttribute("aria-hidden", "true");
+      th.appendChild(handle);
+
+      var startX, startW, startTableW;
+
+      handle.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.clientX;
+        startW = th.getBoundingClientRect().width;
+        startTableW = table.getBoundingClientRect().width;
+        handle.classList.add("dragging");
+        document.body.classList.add("col-resizing");
+
+        function onMove(ev) {
+          var delta = ev.clientX - startX;
+          var newW = Math.max(40, startW + delta);
+          th.style.width = newW + "px";
+          table.style.width = (startTableW + (newW - startW)) + "px";
+        }
+
+        function onUp() {
+          handle.classList.remove("dragging");
+          document.body.classList.remove("col-resizing");
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+        }
+
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    });
+  }
+
   /* ── INIT ────────────────────────────────────────────────────── */
   loadData().then(function () {
     updateCounts();
     renderTable();
+    requestAnimationFrame(function () { initColumnResize(); });
   });
 
 })();
