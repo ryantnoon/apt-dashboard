@@ -32,24 +32,17 @@
   }
 
   function isDogFriendly(breed, weight) {
-    /* "Dog Friendly" = no breed restrictions AND no restrictive weight limit (<50 lbs) */
-    var b = (breed || "").toLowerCase();
+    /* "Dog Friendly" = weight limit allows a 38 lb dog (user's dog) */
     var w = (weight || "").toLowerCase();
-    /* Explicitly has breed restrictions */
-    var hasBR = b.indexOf("yes") !== -1 || b.indexOf("extensive") !== -1 || b.indexOf("standard restriction") !== -1;
-    /* "None" / "none listed" / "all breeds welcome" = no restrictions */
-    var noBR = b.indexOf("none") !== -1 || b === "";
-    /* Weight limit too low (under 50 lbs = not dog friendly for larger dogs) */
+    /* Explicit "small dogs only" = not friendly */
+    if (w.indexOf("small dogs only") !== -1) return false;
+    /* Check numeric weight limit — must be >= 38 lbs or no limit stated */
     var weightMatch = w.match(/(\d+)/);
-    var restrictiveWeight = false;
     if (weightMatch) {
       var lbs = parseInt(weightMatch[1], 10);
-      if (lbs > 0 && lbs < 50) restrictiveWeight = true;
+      if (lbs > 0 && lbs < 38) return false;
     }
-    if (w.indexOf("small dogs only") !== -1) restrictiveWeight = true;
-    /* Dog friendly = no breed restrictions and no restrictive weight */
-    if (hasBR) return false;
-    if (restrictiveWeight) return false;
+    /* Everything else (no limit listed, contact leasing, etc.) = assume OK */
     return true;
   }
 
