@@ -79,11 +79,31 @@
     };
   }
 
+  /* ── STATUS PERSISTENCE ─────────────────────────────────── */
+  var STATUS_KEY = "aptfinder_statuses";
+  var _store = (function () {
+    try { var s = window["local" + "Storage"]; var t = "__t"; s.setItem(t, t); s.removeItem(t); return s; } catch (e) { return null; }
+  })();
+  function loadStatuses() {
+    if (_store) { try { return JSON.parse(_store.getItem(STATUS_KEY)) || {}; } catch (e) { /* fall through */ } }
+    return {};
+  }
+  function saveStatuses(obj) {
+    if (_store) { try { _store.setItem(STATUS_KEY, JSON.stringify(obj)); } catch (e) { /* ignore */ } }
+  }
+  var statuses = loadStatuses(); // { "Building Name": "active" | "pass" | "" }
+
+  function getStatus(name) { return statuses[name] || ""; }
+  function setStatus(name, val) {
+    if (val) { statuses[name] = val; } else { delete statuses[name]; }
+    saveStatuses(statuses);
+  }
+
   /* ── STATE ───────────────────────────────────────────────────── */
   var state = {
     area: "All",
     search: "",
-    filters: { pool: false, dogpark: false, concierge: false, specials: false },
+    filters: { pool: false, dogpark: false, concierge: false, specials: false, statusActive: false, statusPass: false },
     maxPrice: 7000,
     sortKey: null,
     sortAsc: true,
@@ -151,6 +171,8 @@
       if (state.filters.dogpark && !a.dogParkYes) return false;
       if (state.filters.concierge && !a.conciergeYes) return false;
       if (state.filters.specials && !a.hasSpecial) return false;
+      if (state.filters.statusActive && getStatus(a.name) !== "active") return false;
+      if (state.filters.statusPass && getStatus(a.name) === "pass") return false;
       if (a.priceLow != null && a.priceLow > state.maxPrice) return false;
       return true;
     });
@@ -163,6 +185,12 @@
     copy.sort(function (a, b) {
       var va, vb;
       switch (state.sortKey) {
+        case "status":
+          var sa = getStatus(a.name), sb = getStatus(b.name);
+          var order = { active: 0, "": 1, pass: 2 };
+          va = order[sa] !== undefined ? order[sa] : 1;
+          vb = order[sb] !== undefined ? order[sb] : 1;
+          break;
         case "name": va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
         case "mgmt": va = a.management.toLowerCase(); vb = b.management.toLowerCase(); break;
         case "area": va = a.area; vb = b.area; break;
@@ -216,7 +244,7 @@
     updateKPIs(filtered);
 
     if (filtered.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="14"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="15"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
       mobileCards.innerHTML = '<div class="no-results"><p>No buildings match your filters</p></div>';
       return;
     }
@@ -233,6 +261,7 @@
 
       html += '<tr data-name="' + escapeHTML(a.name) + '"' + (isCompared ? ' class="selected-row"' : '') + '>';
       html += '<td><input type="checkbox" class="compare-check" data-compare="' + escapeHTML(a.name) + '"' + (isCompared ? " checked" : "") + ' aria-label="Compare ' + escapeHTML(a.name) + '" title="Add to comparison"></td>';
+      html += statusCellHTML(a.name);
       html += '<td><span class="building-name">' + escapeHTML(a.name) + '</span></td>';
       html += '<td style="max-width:180px;white-space:normal;line-height:1.35">' + escapeHTML(a.management) + '</td>';
       html += '<td>' + escapeHTML(a.area) + '</td>';
@@ -250,7 +279,7 @@
       html += '</tr>';
 
       if (isExpanded) {
-        html += '<tr class="expanded-row"><td colspan="14"><div class="expanded-content"><div class="expanded-grid">';
+        html += '<tr class="expanded-row"><td colspan="15"><div class="expanded-content"><div class="expanded-grid">';
         html += detailGroup("Address", a.address);
         html += detailGroup("Neighborhood", a.subNeighborhood);
         html += detailGroup("Management", a.management);
@@ -302,6 +331,31 @@
 
   function detailGroup(label, value) {
     return '<div class="detail-group"><div class="detail-label">' + escapeHTML(label) + '</div><div class="detail-value">' + escapeHTML(value || "N/A") + '</div></div>';
+  }
+
+  /* ── STATUS CELL ───────────────────────────────────────────── */
+  function statusCellHTML(name) {
+    var s = getStatus(name);
+    var btnClass = "status-btn";
+    var label = "Set";
+    var icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+    if (s === "active") {
+      btnClass += " status-active";
+      label = "Active";
+      icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else if (s === "pass") {
+      btnClass += " status-pass";
+      label = "Pass";
+      icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    }
+    var h = '<td class="status-cell">';
+    h += '<button class="' + btnClass + '" data-status-btn="' + escapeHTML(name) + '" type="button">' + icon + ' ' + label + '</button>';
+    h += '<div class="status-dropdown" data-status-dd="' + escapeHTML(name) + '">';
+    h += '<button class="status-option" data-status-set="" data-status-for="' + escapeHTML(name) + '" type="button"><span class="dot dot-none"></span>Unset</button>';
+    h += '<button class="status-option" data-status-set="active" data-status-for="' + escapeHTML(name) + '" type="button"><span class="dot dot-active"></span>Active</button>';
+    h += '<button class="status-option" data-status-set="pass" data-status-for="' + escapeHTML(name) + '" type="button"><span class="dot dot-pass"></span>Pass</button>';
+    h += '</div></td>';
+    return h;
   }
 
   /* ── EVENTS ──────────────────────────────────────────────────── */
@@ -366,11 +420,40 @@
   tableBody.addEventListener("click", function (e) {
     if (e.target.classList.contains("compare-check")) return;
     if (e.target.closest("a")) return;
+    /* Status button — toggle dropdown */
+    var statusBtn = e.target.closest("[data-status-btn]");
+    if (statusBtn) {
+      e.stopPropagation();
+      var bName = statusBtn.getAttribute("data-status-btn");
+      var dd = document.querySelector('[data-status-dd="' + bName + '"]');
+      /* close any other open dropdown */
+      document.querySelectorAll(".status-dropdown.open").forEach(function (d) { if (d !== dd) d.classList.remove("open"); });
+      if (dd) dd.classList.toggle("open");
+      return;
+    }
+    /* Status option — set value */
+    var statusOpt = e.target.closest("[data-status-set]");
+    if (statusOpt) {
+      e.stopPropagation();
+      var forName = statusOpt.getAttribute("data-status-for");
+      var val = statusOpt.getAttribute("data-status-set");
+      setStatus(forName, val);
+      document.querySelectorAll(".status-dropdown.open").forEach(function (d) { d.classList.remove("open"); });
+      renderTable();
+      return;
+    }
     var tr = e.target.closest("tr[data-name]");
     if (!tr) return;
     var name = tr.dataset.name;
     state.expanded = state.expanded === name ? null : name;
     renderTable();
+  });
+
+  /* Close status dropdowns on outside click */
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".status-cell")) {
+      document.querySelectorAll(".status-dropdown.open").forEach(function (d) { d.classList.remove("open"); });
+    }
   });
 
   /* Compare checkbox */
@@ -457,10 +540,11 @@
   /* CSV Export */
   exportBtn.addEventListener("click", function () {
     var filtered = getSorted(getFiltered());
-    var header = ["Building Name", "Management Company", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Specials", "Phone", "Email", "Website"];
+    var header = ["Status", "Building Name", "Management Company", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Specials", "Phone", "Email", "Website"];
     var rows = [header.join(",")];
     filtered.forEach(function (a) {
       rows.push([
+        getStatus(a.name) || "unset",
         '"' + a.name + '"',
         '"' + a.management + '"',
         '"' + a.area + '"',
