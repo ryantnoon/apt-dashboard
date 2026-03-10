@@ -264,8 +264,8 @@
       html += '<td><input type="checkbox" class="compare-check" data-compare="' + escapeHTML(a.name) + '"' + (isCompared ? " checked" : "") + ' aria-label="Compare ' + escapeHTML(a.name) + '" title="Add to comparison"></td>';
       html += statusCellHTML(a.name);
       html += '<td><span class="building-name">' + escapeHTML(a.name) + '</span></td>';
-      html += '<td style="max-width:220px;white-space:normal;line-height:1.35">' + escapeHTML(a.address) + '</td>';
-      html += '<td style="max-width:180px;white-space:normal;line-height:1.35">' + escapeHTML(a.management) + '</td>';
+      html += '<td title="' + escapeHTML(a.address) + '">' + escapeHTML(a.address) + '</td>';
+      html += '<td title="' + escapeHTML(a.management) + '">' + escapeHTML(a.management) + '</td>';
       html += '<td>' + escapeHTML(a.area) + '</td>';
       html += '<td class="price-range">' + priceRange + '</td>';
       html += '<td>' + badgeHTML(a.poolYes, a.pool) + '</td>';
