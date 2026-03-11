@@ -94,16 +94,24 @@
     };
   }
 
-  /* ── CRM STAGES ─────────────────────────────────────────────── */
+  /* ── THREE-WAY STATUS: Active / Hold / Pass ────────────────── */
+  var STATUSES = [
+    { id: "active", label: "Active",  color: "success" },
+    { id: "hold",   label: "Hold",    color: "warning" },
+    { id: "pass",   label: "Pass",    color: "error"   }
+  ];
+  var STATUS_MAP = {};
+  STATUSES.forEach(function (s) { STATUS_MAP[s.id] = s; });
+
+  /* ── PIPELINE STAGES ───────────────────────────────────────── */
   var CRM_STAGES = [
-    { id: "new",            label: "New",            icon: "circle",    color: "faint" },
-    { id: "researching",    label: "Researching",    icon: "search",    color: "info" },
-    { id: "tour_scheduled", label: "Tour Scheduled", icon: "calendar",  color: "warning" },
-    { id: "tour_complete",  label: "Tour Complete",  icon: "eye",       color: "primary" },
-    { id: "applied",        label: "Applied",        icon: "send",      color: "purple" },
-    { id: "approved",       label: "Approved",       icon: "check",     color: "success" },
-    { id: "signed",         label: "Signed",         icon: "star",      color: "gold" },
-    { id: "passed",         label: "Passed",         icon: "x",         color: "error" }
+    { id: "none",           label: "—",              icon: "circle",   color: "faint" },
+    { id: "researching",    label: "Researching",    icon: "search",   color: "info" },
+    { id: "tour_scheduled", label: "Tour Scheduled", icon: "calendar", color: "warning" },
+    { id: "tour_complete",  label: "Tour Complete",  icon: "eye",      color: "primary" },
+    { id: "applied",        label: "Applied",        icon: "send",     color: "purple" },
+    { id: "approved",       label: "Approved",       icon: "check",    color: "success" },
+    { id: "signed",         label: "Signed",         icon: "star",     color: "gold" }
   ];
 
   var STAGE_MAP = {};
@@ -123,35 +131,158 @@
     return icons[iconName] || icons.circle;
   }
 
-  /* ── STATUS PERSISTENCE ─────────────────────────────────── */
-  var STATUS_KEY = "aptfinder_statuses";
+  /* ── SUPABASE CLIENT ───────────────────────────────────────── */
+  var _sb = null;
+  var SB_CONFIG_KEY = "aptfinder_sb_config";
+
+  function getSBConfig() {
+    try {
+      var s = window["local" + "Storage"];
+      var cfg = s.getItem(SB_CONFIG_KEY);
+      return cfg ? JSON.parse(cfg) : null;
+    } catch (e) { return null; }
+  }
+
+  function saveSBConfig(url, key) {
+    try {
+      var s = window["local" + "Storage"];
+      s.setItem(SB_CONFIG_KEY, JSON.stringify({ url: url, key: key }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function initSupabase(url, key) {
+    if (typeof window.supabase !== "undefined" && window.supabase.createClient) {
+      _sb = window.supabase.createClient(url, key);
+      return true;
+    }
+    return false;
+  }
+
+  function sbConnected() { return _sb !== null; }
+
+  /* ── PERSISTENCE (Supabase primary, localStorage fallback) ── */
+  var LOCAL_STATUS_KEY = "aptfinder_statuses";
+  var LOCAL_STAGE_KEY = "aptfinder_stages";
   var _store = (function () {
     try { var s = window["local" + "Storage"]; var t = "__t"; s.setItem(t, t); s.removeItem(t); return s; } catch (e) { return null; }
   })();
 
-  function loadStatuses() {
-    if (_store) { try { return JSON.parse(_store.getItem(STATUS_KEY)) || {}; } catch (e) { /* fall through */ } }
-    return {};
-  }
-  function saveStatuses(obj) {
-    if (_store) { try { _store.setItem(STATUS_KEY, JSON.stringify(obj)); } catch (e) { /* ignore */ } }
+  /* In-memory cache */
+  var statusCache = {};  /* name → "active"|"hold"|"pass" */
+  var stageCache = {};   /* name → stage id */
+
+  function loadLocalCache() {
+    if (_store) {
+      try { statusCache = JSON.parse(_store.getItem(LOCAL_STATUS_KEY)) || {}; } catch (e) { statusCache = {}; }
+      try { stageCache = JSON.parse(_store.getItem(LOCAL_STAGE_KEY)) || {}; } catch (e) { stageCache = {}; }
+    }
+    /* Migrate old combined statuses */
+    var oldKey = "aptfinder_statuses";
+    if (_store) {
+      try {
+        var old = JSON.parse(_store.getItem(oldKey)) || {};
+        var migrated = false;
+        Object.keys(old).forEach(function (k) {
+          var v = old[k];
+          /* Old values: "active"/"researching"/"tour_scheduled" etc were stages; "passed"/"pass" was status */
+          if (v === "passed" || v === "pass") {
+            if (!statusCache[k]) { statusCache[k] = "pass"; migrated = true; }
+          } else if (v === "researching" || v === "tour_scheduled" || v === "tour_complete" || v === "applied" || v === "approved" || v === "signed") {
+            if (!stageCache[k]) { stageCache[k] = v; migrated = true; }
+            if (!statusCache[k]) { statusCache[k] = "active"; migrated = true; }
+          } else if (v === "new") {
+            /* leave as default */
+          }
+        });
+        if (migrated) { saveLocalCache(); }
+      } catch (e) { /* ignore */ }
+    }
   }
 
-  /* Migrate old active/pass values to new CRM stages */
-  var statuses = loadStatuses();
-  (function migrateOld() {
-    var changed = false;
-    Object.keys(statuses).forEach(function (k) {
-      if (statuses[k] === "active") { statuses[k] = "researching"; changed = true; }
-      if (statuses[k] === "pass") { statuses[k] = "passed"; changed = true; }
-    });
-    if (changed) saveStatuses(statuses);
-  })();
+  function saveLocalCache() {
+    if (_store) {
+      try { _store.setItem(LOCAL_STATUS_KEY, JSON.stringify(statusCache)); } catch (e) {}
+      try { _store.setItem(LOCAL_STAGE_KEY, JSON.stringify(stageCache)); } catch (e) {}
+    }
+  }
 
-  function getStatus(name) { return statuses[name] || "new"; }
+  function getStatus(name) { return statusCache[name] || "active"; }
+  function getStage(name) { return stageCache[name] || "none"; }
+
   function setStatus(name, val) {
-    if (val && val !== "new") { statuses[name] = val; } else { delete statuses[name]; }
-    saveStatuses(statuses);
+    if (val === "active") { delete statusCache[name]; } else { statusCache[name] = val; }
+    saveLocalCache();
+    sbUpsert(name);
+  }
+
+  function setStage(name, val) {
+    if (val === "none") { delete stageCache[name]; } else { stageCache[name] = val; }
+    saveLocalCache();
+    sbUpsert(name);
+  }
+
+  /* Supabase sync */
+  var _syncIndicator = null;
+  function showSyncStatus(ok) {
+    if (!_syncIndicator) {
+      _syncIndicator = document.getElementById("syncIndicator");
+    }
+    if (_syncIndicator) {
+      _syncIndicator.textContent = ok ? "Synced ✓" : "Sync error";
+      _syncIndicator.className = "sync-indicator " + (ok ? "sync-ok" : "sync-err");
+      _syncIndicator.style.opacity = "1";
+      setTimeout(function () { _syncIndicator.style.opacity = "0"; }, 2000);
+    }
+  }
+
+  function sbUpsert(name) {
+    if (!sbConnected()) return;
+    var data = {
+      building_name: name,
+      status: getStatus(name),
+      stage: getStage(name),
+      updated_at: new Date().toISOString()
+    };
+    _sb.from("apt_tracking").upsert(data, { onConflict: "building_name" })
+      .then(function (res) {
+        showSyncStatus(!res.error);
+        if (res.error) console.error("Supabase upsert error:", res.error);
+      });
+  }
+
+  function sbLoadAll() {
+    if (!sbConnected()) return Promise.resolve();
+    return _sb.from("apt_tracking").select("*").then(function (res) {
+      if (res.error) {
+        console.error("Supabase load error:", res.error);
+        return;
+      }
+      if (res.data && res.data.length > 0) {
+        statusCache = {};
+        stageCache = {};
+        res.data.forEach(function (row) {
+          if (row.status && row.status !== "active") statusCache[row.building_name] = row.status;
+          if (row.stage && row.stage !== "none") stageCache[row.building_name] = row.stage;
+        });
+        saveLocalCache();
+      }
+    });
+  }
+
+  function sbSeedAll() {
+    if (!sbConnected()) return Promise.resolve();
+    var rows = APARTMENTS.map(function (a) {
+      return {
+        building_name: a.name,
+        status: getStatus(a.name),
+        stage: getStage(a.name),
+        updated_at: new Date().toISOString()
+      };
+    });
+    return _sb.from("apt_tracking").upsert(rows, { onConflict: "building_name" })
+      .then(function (res) {
+        if (res.error) console.error("Supabase seed error:", res.error);
+      });
   }
 
   /* ── STATE ───────────────────────────────────────────────────── */
@@ -227,8 +358,8 @@
       if (state.filters.dogfriendly && !a.dogFriendly) return false;
       if (state.filters.concierge && !a.conciergeYes) return false;
       if (state.filters.specials && !a.hasSpecial) return false;
-      if (state.filters.hideNew && getStatus(a.name) === "new") return false;
-      if (state.filters.hidePassed && getStatus(a.name) === "passed") return false;
+      if (state.filters.hideNew && getStage(a.name) === "none" && getStatus(a.name) === "active") return false;
+      if (state.filters.hidePassed && getStatus(a.name) === "pass") return false;
       if (a.priceLow != null && a.priceLow > state.maxPrice) return false;
       return true;
     });
@@ -242,11 +373,15 @@
       var va, vb;
       switch (state.sortKey) {
         case "status":
-          var sa = getStatus(a.name), sb = getStatus(b.name);
+          var so = { active: 0, hold: 1, pass: 2 };
+          va = so[getStatus(a.name)] || 0;
+          vb = so[getStatus(b.name)] || 0;
+          break;
+        case "stage":
           var stageOrder = {};
           CRM_STAGES.forEach(function (s, i) { stageOrder[s.id] = i; });
-          va = stageOrder[sa] !== undefined ? stageOrder[sa] : 0;
-          vb = stageOrder[sb] !== undefined ? stageOrder[sb] : 0;
+          va = stageOrder[getStage(a.name)] !== undefined ? stageOrder[getStage(a.name)] : 0;
+          vb = stageOrder[getStage(b.name)] !== undefined ? stageOrder[getStage(b.name)] : 0;
           break;
         case "name": va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
         case "address": va = a.address.toLowerCase(); vb = b.address.toLowerCase(); break;
@@ -282,10 +417,11 @@
     document.getElementById("kpiPool").textContent = filtered.filter(function (a) { return a.poolYes; }).length;
     document.getElementById("kpiDogFriendly").textContent = filtered.filter(function (a) { return a.dogFriendly; }).length;
 
-    /* Pipeline KPI: count active (not new, not passed) */
+    /* Pipeline KPI: count those with a stage set (not "none") AND status is active */
     var pipeline = filtered.filter(function (a) {
-      var s = getStatus(a.name);
-      return s !== "new" && s !== "passed";
+      var st = getStatus(a.name);
+      var sg = getStage(a.name);
+      return st === "active" && sg !== "none";
     }).length;
     document.getElementById("kpiPipeline").textContent = pipeline;
   }
@@ -302,27 +438,50 @@
     document.getElementById("countCenter").textContent = counts["Center City"];
   }
 
-  /* ── STATUS CELL (Desktop) ──────────────────────────────────── */
-  function statusCellHTML(name) {
+  /* ── STATUS CELL (three-way: Active / Hold / Pass) ──────────── */
+  function statusBtnHTML(name, context) {
     var s = getStatus(name);
-    var stg = STAGE_MAP[s] || STAGE_MAP["new"];
-    var h = '<td class="status-cell">';
-    h += '<button class="stage-btn stage-' + stg.color + '" data-status-btn="' + escapeHTML(name) + '" type="button">';
+    var stObj = STATUS_MAP[s] || STATUS_MAP["active"];
+    var cls = context === "mobile" ? "mc-status-btn" : "status-pill";
+    var h = '<button class="' + cls + ' pill-' + stObj.color + '" data-apt-status="' + escapeHTML(name) + '" type="button">';
+    h += stObj.label;
+    h += '</button>';
+    return h;
+  }
+
+  function statusDropdownHTML(name) {
+    var current = getStatus(name);
+    var h = '<div class="status-dropdown">';
+    STATUSES.forEach(function (st) {
+      var sel = st.id === current ? " sdd-selected" : "";
+      h += '<button class="sdd-opt pill-' + st.color + sel + '" data-set-status="' + st.id + '" data-set-status-for="' + escapeHTML(name) + '" type="button">';
+      h += '<span class="sdd-dot"></span>' + st.label;
+      if (st.id === current) h += '<svg class="sdd-chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
+      h += '</button>';
+    });
+    h += '</div>';
+    return h;
+  }
+
+  /* ── STAGE CELL (pipeline dropdown) ─────────────────────────── */
+  function stageBtnHTML(name, context) {
+    var s = getStage(name);
+    var stg = STAGE_MAP[s] || STAGE_MAP["none"];
+    var cls = context === "mobile" ? "mc-stage-btn" : "stage-btn";
+    var h = '<button class="' + cls + ' stage-' + stg.color + '" data-apt-stage="' + escapeHTML(name) + '" type="button">';
     h += '<span class="stage-icon">' + stageIcon(stg.icon) + '</span>';
     h += '<span class="stage-label">' + stg.label + '</span>';
     h += '</button>';
-    h += stageDropdownHTML(name);
-    h += '</td>';
     return h;
   }
 
   function stageDropdownHTML(name) {
-    var current = getStatus(name);
+    var current = getStage(name);
     var h = '<div class="stage-dropdown">';
-    h += '<div class="stage-dd-title">Set Stage</div>';
+    h += '<div class="stage-dd-title">Pipeline Stage</div>';
     CRM_STAGES.forEach(function (stg) {
       var sel = stg.id === current ? " stage-dd-selected" : "";
-      h += '<button class="stage-dd-opt stage-' + stg.color + sel + '" data-status-set="' + stg.id + '" data-status-for="' + escapeHTML(name) + '" type="button">';
+      h += '<button class="stage-dd-opt stage-' + stg.color + sel + '" data-set-stage="' + stg.id + '" data-set-stage-for="' + escapeHTML(name) + '" type="button">';
       h += '<span class="stage-dd-dot"></span>';
       h += '<span>' + stg.label + '</span>';
       if (stg.id === current) h += '<svg class="stage-dd-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -338,7 +497,7 @@
     updateKPIs(filtered);
 
     if (filtered.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="16"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="17"><div class="no-results"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg><p>No buildings match your filters</p></div></td></tr>';
       mobileCards.innerHTML = '<div class="no-results"><p>No buildings match your filters</p></div>';
       return;
     }
@@ -350,12 +509,15 @@
       var priceStr = a.priceLow ? formatPrice(a.priceLow) : "Call";
       var priceRange = priceStr;
       if (a.priceHigh && a.priceLow) {
-        priceRange = formatPrice(a.priceLow) + " – " + (a.priceHighRaw.indexOf("Call") !== -1 ? "Call" : formatPrice(a.priceHigh));
+        priceRange = formatPrice(a.priceLow) + " \u2013 " + (a.priceHighRaw.indexOf("Call") !== -1 ? "Call" : formatPrice(a.priceHigh));
       }
 
       html += '<tr data-name="' + escapeHTML(a.name) + '"' + (isCompared ? ' class="selected-row"' : '') + '>';
       html += '<td><input type="checkbox" class="compare-check" data-compare="' + escapeHTML(a.name) + '"' + (isCompared ? " checked" : "") + ' aria-label="Compare ' + escapeHTML(a.name) + '" title="Add to comparison"></td>';
-      html += statusCellHTML(a.name);
+      /* Status column */
+      html += '<td class="status-cell">' + statusBtnHTML(a.name, "desktop") + statusDropdownHTML(a.name) + '</td>';
+      /* Stage column */
+      html += '<td class="stage-cell">' + stageBtnHTML(a.name, "desktop") + stageDropdownHTML(a.name) + '</td>';
       html += '<td><span class="building-name">' + escapeHTML(a.name) + '</span></td>';
       html += '<td title="' + escapeHTML(a.address) + '">' + escapeHTML(a.address) + '</td>';
       html += '<td title="' + escapeHTML(a.management) + '">' + escapeHTML(a.management) + '</td>';
@@ -368,13 +530,13 @@
       html += '<td>' + escapeHTML(a.yearBuilt) + '</td>';
       html += '<td>' + (a.hasSpecial ? specialBadge(a.specials) : '<span class="badge badge-no">None</span>') + '</td>';
       html += '<td>' + escapeHTML(a.phone) + '</td>';
-      var emailDisplay = (a.email && a.email.indexOf('@') !== -1 && a.email.indexOf('N/A') === -1) ? '<a href="mailto:' + escapeHTML(a.email) + '">' + escapeHTML(a.email) + '</a>' : '<span style="color:var(--color-text-faint)">—</span>';
+      var emailDisplay = (a.email && a.email.indexOf('@') !== -1 && a.email.indexOf('N/A') === -1) ? '<a href="mailto:' + escapeHTML(a.email) + '">' + escapeHTML(a.email) + '</a>' : '<span style="color:var(--color-text-faint)">\u2014</span>';
       html += '<td>' + emailDisplay + '</td>';
-      html += '<td>' + (isValidURL(a.website) ? '<a href="' + escapeHTML(a.website) + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(a.name) + ' ↗</a>' : '<span style="color:var(--color-text-faint)">—</span>') + '</td>';
+      html += '<td>' + (isValidURL(a.website) ? '<a href="' + escapeHTML(a.website) + '" target="_blank" rel="noopener noreferrer">' + escapeHTML(a.name) + ' \u2197</a>' : '<span style="color:var(--color-text-faint)">\u2014</span>') + '</td>';
       html += '</tr>';
 
       if (isExpanded) {
-        html += '<tr class="expanded-row"><td colspan="16"><div class="expanded-content"><div class="expanded-grid">';
+        html += '<tr class="expanded-row"><td colspan="17"><div class="expanded-content"><div class="expanded-grid">';
         html += detailGroup("Address", a.address);
         html += detailGroup("Neighborhood", a.subNeighborhood);
         html += detailGroup("Management", a.management);
@@ -409,19 +571,16 @@
       var priceStr = a.priceLow ? formatPrice(a.priceLow) : "Call";
       var priceRange = priceStr;
       if (a.priceHigh && a.priceLow) {
-        priceRange = formatPrice(a.priceLow) + " – " + formatPrice(a.priceHigh);
+        priceRange = formatPrice(a.priceLow) + " \u2013 " + formatPrice(a.priceHigh);
       }
-      var stg = STAGE_MAP[getStatus(a.name)] || STAGE_MAP["new"];
       var isExpanded = state.expanded === a.name;
 
       mhtml += '<div class="mobile-card' + (isExpanded ? " mobile-card-expanded" : "") + '" data-name="' + escapeHTML(a.name) + '">';
 
-      /* Stage bar */
-      mhtml += '<div class="mc-stage-bar">';
-      mhtml += '<button class="mc-stage-btn stage-' + stg.color + '" data-status-btn="' + escapeHTML(a.name) + '" type="button">';
-      mhtml += '<span class="stage-icon">' + stageIcon(stg.icon) + '</span> ' + stg.label;
-      mhtml += '</button>';
-      mhtml += stageDropdownHTML(a.name);
+      /* Status + Stage bar */
+      mhtml += '<div class="mc-controls">';
+      mhtml += '<div class="mc-status-wrap">' + statusBtnHTML(a.name, "mobile") + statusDropdownHTML(a.name) + '</div>';
+      mhtml += '<div class="mc-stage-wrap">' + stageBtnHTML(a.name, "mobile") + stageDropdownHTML(a.name) + '</div>';
       mhtml += '</div>';
 
       /* Header: name + price */
@@ -431,7 +590,7 @@
       mhtml += '</div>';
 
       /* Area / Neighborhood */
-      mhtml += '<div class="mc-area">' + escapeHTML(a.area) + ' · ' + escapeHTML(a.subNeighborhood) + '</div>';
+      mhtml += '<div class="mc-area">' + escapeHTML(a.area) + ' \u00b7 ' + escapeHTML(a.subNeighborhood) + '</div>';
 
       /* Badges */
       mhtml += '<div class="mc-badges">';
@@ -439,7 +598,7 @@
       if (a.dogParkYes) mhtml += '<span class="badge badge-yes">Dog Park</span>';
       if (a.gymYes) mhtml += '<span class="badge badge-yes">Gym</span>';
       if (a.conciergeYes) mhtml += '<span class="badge badge-yes">Concierge</span>';
-      if (a.dogFriendly) mhtml += '<span class="badge badge-yes">🐶 Dog OK</span>';
+      if (a.dogFriendly) mhtml += '<span class="badge badge-yes">\ud83d\udc36 Dog OK</span>';
       if (a.hasSpecial) mhtml += '<span class="badge badge-special">' + escapeHTML(a.specials) + '</span>';
       mhtml += '</div>';
 
@@ -452,7 +611,7 @@
 
       /* Expand toggle */
       mhtml += '<button class="mc-expand-btn" data-mc-expand="' + escapeHTML(a.name) + '" type="button">';
-      mhtml += isExpanded ? 'Hide Details ▲' : 'Show Details ▼';
+      mhtml += isExpanded ? 'Hide Details \u25b2' : 'Show Details \u25bc';
       mhtml += '</button>';
 
       /* Expanded detail section */
@@ -467,13 +626,13 @@
         mhtml += mcDetail("Pet Fee", a.petFee);
         mhtml += mcDetail("Breed Restrictions", a.breedRestrictions);
         mhtml += mcDetail("Weight Limit", a.weightLimit);
-        mhtml += mcDetail("Parking", a.parkingType + (a.parkingCost ? " — " + a.parkingCost : ""));
+        mhtml += mcDetail("Parking", a.parkingType + (a.parkingCost ? " \u2014 " + a.parkingCost : ""));
         if (a.phone) mhtml += '<div class="mc-detail-row"><span class="mc-detail-label">Phone</span><a href="tel:' + escapeHTML(a.phone) + '">' + escapeHTML(a.phone) + '</a></div>';
         if (a.email && a.email.indexOf("@") !== -1 && a.email.indexOf("N/A") === -1) {
           mhtml += '<div class="mc-detail-row"><span class="mc-detail-label">Email</span><a href="mailto:' + escapeHTML(a.email) + '">' + escapeHTML(a.email) + '</a></div>';
         }
         if (isValidURL(a.website)) {
-          mhtml += '<div class="mc-detail-row"><span class="mc-detail-label">Website</span><a href="' + escapeHTML(a.website) + '" target="_blank" rel="noopener noreferrer">Visit Site ↗</a></div>';
+          mhtml += '<div class="mc-detail-row"><span class="mc-detail-label">Website</span><a href="' + escapeHTML(a.website) + '" target="_blank" rel="noopener noreferrer">Visit Site \u2197</a></div>';
         }
         if (a.hasSpecial) {
           mhtml += '<div class="mc-detail-row mc-special"><span class="mc-detail-label">Special</span><span>' + escapeHTML(a.specials) + '</span></div>';
@@ -553,48 +712,64 @@
     });
   });
 
-  /* ── Status dropdown handler (works for both desktop table and mobile cards) ── */
-  function handleStatusClick(e) {
+  /* ── Generic dropdown handler ────────────────────────────── */
+  function openDropdown(btnEl, ddEl) {
+    /* close all open dropdowns first */
+    document.querySelectorAll(".stage-dropdown.open, .status-dropdown.open").forEach(function (d) { if (d !== ddEl) d.classList.remove("open"); });
+    var isOpen = ddEl.classList.toggle("open");
+    if (isOpen) {
+      var rect = btnEl.getBoundingClientRect();
+      ddEl.style.position = "fixed";
+      ddEl.style.top = (rect.bottom + 4) + "px";
+      ddEl.style.left = rect.left + "px";
+      requestAnimationFrame(function () {
+        var ddRect = ddEl.getBoundingClientRect();
+        if (ddRect.right > window.innerWidth) {
+          ddEl.style.left = Math.max(8, window.innerWidth - ddRect.width - 8) + "px";
+        }
+        if (ddRect.bottom > window.innerHeight) {
+          ddEl.style.top = (rect.top - ddRect.height - 4) + "px";
+        }
+      });
+    }
+  }
+
+  function handleDropdownClicks(e) {
     if (e.target.closest("a")) return;
 
-    /* Stage button — toggle dropdown */
-    var statusBtn = e.target.closest("[data-status-btn]");
+    /* Status button → open status dropdown */
+    var statusBtn = e.target.closest("[data-apt-status]");
     if (statusBtn) {
-      e.preventDefault();
-      e.stopPropagation();
-      var parent = statusBtn.parentElement;
-      var dd = parent ? parent.querySelector(".stage-dropdown") : null;
-      /* close all other open dropdowns */
-      document.querySelectorAll(".stage-dropdown.open").forEach(function (d) { if (d !== dd) d.classList.remove("open"); });
-      if (dd) {
-        var isOpen = dd.classList.toggle("open");
-        if (isOpen) {
-          var rect = statusBtn.getBoundingClientRect();
-          dd.style.position = "fixed";
-          dd.style.top = (rect.bottom + 4) + "px";
-          dd.style.left = rect.left + "px";
-          /* Ensure dropdown doesn't overflow viewport */
-          requestAnimationFrame(function () {
-            var ddRect = dd.getBoundingClientRect();
-            if (ddRect.right > window.innerWidth) {
-              dd.style.left = Math.max(8, window.innerWidth - ddRect.width - 8) + "px";
-            }
-            if (ddRect.bottom > window.innerHeight) {
-              dd.style.top = (rect.top - ddRect.height - 4) + "px";
-            }
-          });
-        }
-      }
+      e.preventDefault(); e.stopPropagation();
+      var dd = statusBtn.parentElement.querySelector(".status-dropdown");
+      if (dd) openDropdown(statusBtn, dd);
       return;
     }
-    /* Stage option — set value */
-    var statusOpt = e.target.closest("[data-status-set]");
+
+    /* Status option → set status value */
+    var statusOpt = e.target.closest("[data-set-status]");
     if (statusOpt) {
-      e.preventDefault();
-      e.stopPropagation();
-      var forName = statusOpt.getAttribute("data-status-for");
-      var val = statusOpt.getAttribute("data-status-set");
-      setStatus(forName, val);
+      e.preventDefault(); e.stopPropagation();
+      setStatus(statusOpt.getAttribute("data-set-status-for"), statusOpt.getAttribute("data-set-status"));
+      document.querySelectorAll(".status-dropdown.open").forEach(function (d) { d.classList.remove("open"); });
+      renderTable();
+      return;
+    }
+
+    /* Stage button → open stage dropdown */
+    var stageBtn = e.target.closest("[data-apt-stage]");
+    if (stageBtn) {
+      e.preventDefault(); e.stopPropagation();
+      var dd2 = stageBtn.parentElement.querySelector(".stage-dropdown");
+      if (dd2) openDropdown(stageBtn, dd2);
+      return;
+    }
+
+    /* Stage option → set stage value */
+    var stageOpt = e.target.closest("[data-set-stage]");
+    if (stageOpt) {
+      e.preventDefault(); e.stopPropagation();
+      setStage(stageOpt.getAttribute("data-set-stage-for"), stageOpt.getAttribute("data-set-stage"));
       document.querySelectorAll(".stage-dropdown.open").forEach(function (d) { d.classList.remove("open"); });
       renderTable();
       return;
@@ -604,8 +779,8 @@
   /* Attach to table body */
   tableBody.addEventListener("click", function (e) {
     if (e.target.classList.contains("compare-check")) return;
-    handleStatusClick(e);
-    if (e.target.closest("[data-status-btn]") || e.target.closest("[data-status-set]")) return;
+    handleDropdownClicks(e);
+    if (e.target.closest("[data-apt-status]") || e.target.closest("[data-set-status]") || e.target.closest("[data-apt-stage]") || e.target.closest("[data-set-stage]")) return;
     var tr = e.target.closest("tr[data-name]");
     if (!tr) return;
     var name = tr.dataset.name;
@@ -615,8 +790,8 @@
 
   /* Attach to mobile cards */
   mobileCards.addEventListener("click", function (e) {
-    handleStatusClick(e);
-    if (e.target.closest("[data-status-btn]") || e.target.closest("[data-status-set]")) return;
+    handleDropdownClicks(e);
+    if (e.target.closest("[data-apt-status]") || e.target.closest("[data-set-status]") || e.target.closest("[data-apt-stage]") || e.target.closest("[data-set-stage]")) return;
     if (e.target.closest("a")) return;
 
     /* Expand toggle */
@@ -637,10 +812,11 @@
     }
   });
 
-  /* Close stage dropdowns on outside click */
+  /* Close all dropdowns on outside click */
   document.addEventListener("click", function (e) {
-    if (!e.target.closest("[data-status-btn]") && !e.target.closest(".stage-dropdown")) {
-      document.querySelectorAll(".stage-dropdown.open").forEach(function (d) { d.classList.remove("open"); });
+    if (!e.target.closest("[data-apt-status]") && !e.target.closest(".status-dropdown") &&
+        !e.target.closest("[data-apt-stage]") && !e.target.closest(".stage-dropdown")) {
+      document.querySelectorAll(".stage-dropdown.open, .status-dropdown.open").forEach(function (d) { d.classList.remove("open"); });
     }
   });
 
@@ -689,7 +865,8 @@
     if (items.length === 0) return;
 
     var fields = [
-      ["Stage", function (a) { var s = STAGE_MAP[getStatus(a.name)]; return s ? s.label : "New"; }],
+      ["Status", function (a) { var s = STATUS_MAP[getStatus(a.name)]; return s ? s.label : "Active"; }],
+      ["Stage", function (a) { var s = STAGE_MAP[getStage(a.name)]; return s ? s.label : "—"; }],
       ["Management", "management"],
       ["Area", "area"],
       ["Address", "address"],
@@ -732,12 +909,14 @@
   /* CSV Export */
   exportBtn.addEventListener("click", function () {
     var filtered = getSorted(getFiltered());
-    var header = ["Stage", "Building Name", "Management Company", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Parking Type", "Parking Cost", "Reserved Parking", "Specials", "Phone", "Email", "Website"];
+    var header = ["Status", "Stage", "Building Name", "Management Company", "Area", "Address", "2BR Low", "2BR High", "Pool", "Gym", "Dog Park", "Concierge", "Units", "Year Built", "Parking Type", "Parking Cost", "Reserved Parking", "Specials", "Phone", "Email", "Website"];
     var rows = [header.join(",")];
     filtered.forEach(function (a) {
-      var stg = STAGE_MAP[getStatus(a.name)];
+      var stObj = STATUS_MAP[getStatus(a.name)];
+      var sgObj = STAGE_MAP[getStage(a.name)];
       rows.push([
-        stg ? stg.label : "New",
+        stObj ? stObj.label : "Active",
+        sgObj ? sgObj.label : "—",
         '"' + a.name + '"',
         '"' + a.management + '"',
         '"' + a.area + '"',
@@ -873,11 +1052,86 @@
     });
   }
 
+  /* ── SUPABASE CONFIG MODAL ──────────────────────────────────── */
+  function initConfigModal() {
+    var openBtn = document.getElementById("sbConfigBtn");
+    var modal = document.getElementById("sbConfigModal");
+    var closeBtn = document.getElementById("sbConfigClose");
+    var form = document.getElementById("sbConfigForm");
+    var urlInput = document.getElementById("sbUrlInput");
+    var keyInput = document.getElementById("sbKeyInput");
+    var statusEl = document.getElementById("sbConfigStatus");
+
+    if (!openBtn || !modal) return;
+
+    function updateConfigBtnState() {
+      if (sbConnected()) {
+        openBtn.classList.add("sb-connected");
+        openBtn.title = "Supabase connected — click to reconfigure";
+      } else {
+        openBtn.classList.remove("sb-connected");
+        openBtn.title = "Connect Supabase for cross-device sync";
+      }
+    }
+
+    openBtn.addEventListener("click", function () {
+      modal.classList.add("visible");
+      var cfg = getSBConfig();
+      if (cfg) {
+        urlInput.value = cfg.url || "";
+        keyInput.value = cfg.key || "";
+      }
+    });
+
+    closeBtn.addEventListener("click", function () {
+      modal.classList.remove("visible");
+    });
+
+    modal.addEventListener("click", function (e) {
+      if (e.target === modal) modal.classList.remove("visible");
+    });
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var url = urlInput.value.trim();
+      var key = keyInput.value.trim();
+      if (!url || !key) { statusEl.textContent = "Both fields required"; return; }
+      statusEl.textContent = "Connecting...";
+      saveSBConfig(url, key);
+      if (initSupabase(url, key)) {
+        sbLoadAll().then(function () {
+          statusEl.textContent = "Connected! Data synced.";
+          statusEl.style.color = "var(--color-success)";
+          updateConfigBtnState();
+          renderTable();
+          setTimeout(function () { modal.classList.remove("visible"); }, 1500);
+        });
+      } else {
+        statusEl.textContent = "Supabase library not loaded. Refresh page.";
+        statusEl.style.color = "var(--color-error)";
+      }
+    });
+
+    /* Auto-connect on load */
+    var cfg = getSBConfig();
+    if (cfg && cfg.url && cfg.key) {
+      if (initSupabase(cfg.url, cfg.key)) {
+        sbLoadAll().then(function () {
+          updateConfigBtnState();
+          renderTable();
+        });
+      }
+    }
+    updateConfigBtnState();
+  }
+
   /* ── INIT ────────────────────────────────────────────────────── */
+  loadLocalCache();
   loadData().then(function () {
     updateCounts();
     renderTable();
     requestAnimationFrame(function () { initColumnResize(); });
+    initConfigModal();
   });
 
 })();
