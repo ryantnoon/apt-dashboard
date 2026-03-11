@@ -449,11 +449,26 @@
     var statusBtn = e.target.closest("[data-status-btn]");
     if (statusBtn) {
       e.stopPropagation();
-      var bName = statusBtn.getAttribute("data-status-btn");
-      var dd = document.querySelector('[data-status-dd="' + bName + '"]');
+      var cell = statusBtn.closest(".status-cell");
+      var dd = cell ? cell.querySelector(".status-dropdown") : null;
       /* close any other open dropdown */
       document.querySelectorAll(".status-dropdown.open").forEach(function (d) { if (d !== dd) d.classList.remove("open"); });
-      if (dd) dd.classList.toggle("open");
+      if (dd) {
+        var isOpen = dd.classList.toggle("open");
+        if (isOpen) {
+          var rect = statusBtn.getBoundingClientRect();
+          dd.style.top = (rect.bottom + 4) + "px";
+          dd.style.left = rect.left + "px";
+          /* Ensure dropdown doesn't overflow viewport */
+          var ddRect = dd.getBoundingClientRect();
+          if (ddRect.right > window.innerWidth) {
+            dd.style.left = (window.innerWidth - ddRect.width - 8) + "px";
+          }
+          if (ddRect.bottom > window.innerHeight) {
+            dd.style.top = (rect.top - ddRect.height - 4) + "px";
+          }
+        }
+      }
       return;
     }
     /* Status option — set value */
