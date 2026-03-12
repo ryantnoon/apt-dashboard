@@ -160,7 +160,7 @@
 
   function sbConnected() { return _sb !== null; }
 
-  /* ── PERSISTENCE (Supabase primary, localStorage fallback) ── */
+  /* ── PERSISTENCE (Supabase primary, local-storage fallback) ── */
   var LOCAL_STATUS_KEY = "aptfinder_statuses";
   var LOCAL_STAGE_KEY = "aptfinder_stages";
   var _store = (function () {
