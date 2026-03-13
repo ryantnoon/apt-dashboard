@@ -650,6 +650,9 @@
       mhtml += '</div>';
     });
     mobileCards.innerHTML = mhtml;
+
+    /* Update map if map view is active */
+    if (_mapViewActive && _map) { updateMapMarkers(); }
   }
 
   function mcDetail(label, val) {
@@ -1131,6 +1134,160 @@
     }
     updateConfigBtnState();
   }
+
+  /* ── MAP VIEW ──────────────────────────────────────────────── */
+  var COORDS = {"Broadridge":[39.966489,-75.15847],"The Noble":[39.9602064,-75.1420119],"Park Towne Place":[39.962587,-75.177549],"LVL North":[39.9629673,-75.1622285],"The Gio":[39.9735396,-75.1803812],"Fairmount North":[39.9733345,-75.1795868],"ReNew Logan Square":[39.9598536,-75.1671801],"1919 Market":[39.9536819,-75.1724664],"One Cathedral Square":[39.956941,-75.167739],"Dalian on the Park":[39.964058,-75.172927],"The Alexander":[39.9589345,-75.1658761],"The Murano":[39.9543657,-75.1752938],"1900 Arch":[39.9551938,-75.1716679],"Locust on the Park":[39.9498523,-75.1803938],"2116 Chestnut":[39.952061,-75.1765532],"Naval Square":[39.9424933,-75.1842776],"AQ Rittenhouse":[39.9523674,-75.1742267],"The Atlantic":[39.947099,-75.164987],"The St. James":[39.9477113,-75.1540246],"1213 Walnut":[39.9493923,-75.1612003],"The Griffin Center City":[39.9494617,-75.1525842],"The View at Old City":[39.9545901,-75.1470763],"The Girard (East Market)":[39.9515322,-75.1596191],"210 South 12th":[39.9479753,-75.1608447],"Goldtex":[39.9581762,-75.1580821],"The Crane Chinatown":[39.9575179,-75.1557648],"The Residences at The Bellevue":[39.9490879,-75.1648651],"One Thousand One":[39.9131097,-75.1717519],"The Collins":[39.9495462,-75.1589528],"The Sterling":[39.9543161,-75.170111],"2301 JFK":[39.955546,-75.1785508]};
+
+  var AREA_COLORS = {
+    "Fairmount": "#f97316",
+    "Logan Square": "#3b82f6",
+    "Fitler Square": "#a855f7",
+    "Center City": "#14b8a6"
+  };
+
+  var _map = null;
+  var _markers = [];
+  var _mapViewActive = false;
+  var mapContainer = document.getElementById("mapContainer");
+  var viewListBtn = document.getElementById("viewList");
+  var viewMapBtn = document.getElementById("viewMap");
+
+  function initMap() {
+    if (_map) return;
+    _map = L.map("mapContainer", {
+      center: [39.955, -75.165],
+      zoom: 14,
+      zoomControl: true,
+      attributionControl: true
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(_map);
+  }
+
+  function buildPopupHTML(apt) {
+    var st = STATUS_MAP[getStatus(apt.name)] || STATUS_MAP["active"];
+    var sg = STAGE_MAP[getStage(apt.name)] || STAGE_MAP["none"];
+    var priceStr = apt.priceLow ? formatPrice(apt.priceLow) : "N/A";
+    if (apt.priceHigh && apt.priceHigh !== apt.priceLow) priceStr += " – " + formatPrice(apt.priceHigh);
+
+    var badges = [];
+    if (apt.poolYes) badges.push("Pool");
+    if (apt.gymYes) badges.push("Gym");
+    if (apt.dogParkYes) badges.push("Dog Park");
+    if (apt.conciergeYes) badges.push("Concierge");
+
+    var html = '<div class="map-popup">';
+    html += '<div class="map-popup-name">' + escapeHTML(apt.name) + '</div>';
+    html += '<div class="map-popup-area" style="color:' + (AREA_COLORS[apt.area] || '#94a3b8') + '">' + escapeHTML(apt.area) + '</div>';
+    html += '<div class="map-popup-price">' + priceStr + '</div>';
+    if (badges.length) {
+      html += '<div class="map-popup-badges">';
+      badges.forEach(function (b) { html += '<span>' + b + '</span>'; });
+      html += '</div>';
+    }
+    if (apt.hasSpecial) {
+      html += '<div class="map-popup-special">' + escapeHTML(apt.specials) + '</div>';
+    }
+    html += '<div class="map-popup-controls">';
+    html += '<span class="pill pill-' + st.color + '" style="font-size:10px;padding:2px 6px">' + escapeHTML(st.label) + '</span>';
+    if (sg.id !== "none") {
+      html += ' <span class="stage-pill stage-' + sg.color + '" style="font-size:10px;padding:2px 6px">' + escapeHTML(sg.label) + '</span>';
+    }
+    html += '</div>';
+    if (apt.website && isValidURL(apt.website)) {
+      html += '<a href="' + escapeHTML(apt.website) + '" target="_blank" rel="noopener noreferrer" style="display:block;margin-top:6px;font-size:10px;color:var(--color-primary)">Visit Website →</a>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  var _legendEl = null;
+
+  function updateMapLegend() {
+    /* Show legend only on "All Areas" view */
+    if (state.area === "All") {
+      if (!_legendEl) {
+        _legendEl = document.createElement("div");
+        _legendEl.className = "map-legend";
+        var areas = ["Fairmount", "Logan Square", "Fitler Square", "Center City"];
+        areas.forEach(function (a) {
+          _legendEl.innerHTML += '<div class="map-legend-item"><span class="map-legend-dot" style="background:' + AREA_COLORS[a] + '"></span>' + a + '</div>';
+        });
+        mapContainer.appendChild(_legendEl);
+      }
+      _legendEl.style.display = "";
+    } else if (_legendEl) {
+      _legendEl.style.display = "none";
+    }
+  }
+
+  function updateMapMarkers() {
+    if (!_map) return;
+    /* clear old markers */
+    _markers.forEach(function (m) { _map.removeLayer(m); });
+    _markers = [];
+
+    updateMapLegend();
+
+    var filtered = getSorted(getFiltered());
+    var bounds = [];
+
+    filtered.forEach(function (apt) {
+      var coord = COORDS[apt.name];
+      if (!coord) return;
+      var color = AREA_COLORS[apt.area] || "#94a3b8";
+      var statusId = getStatus(apt.name);
+      var radius = 8;
+      var opacity = 1;
+      var fillOpacity = 0.85;
+      if (statusId === "pass") { opacity = 0.4; fillOpacity = 0.3; }
+      else if (statusId === "hold") { fillOpacity = 0.55; }
+
+      var marker = L.circleMarker([coord[0], coord[1]], {
+        radius: radius,
+        color: color,
+        fillColor: color,
+        fillOpacity: fillOpacity,
+        opacity: opacity,
+        weight: 2
+      });
+      marker.bindPopup(buildPopupHTML(apt), { maxWidth: 260, className: "map-popup-wrap" });
+      marker.addTo(_map);
+      _markers.push(marker);
+      bounds.push([coord[0], coord[1]]);
+    });
+
+    if (bounds.length > 0) {
+      _map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    }
+  }
+
+  function showMapView() {
+    _mapViewActive = true;
+    mapContainer.classList.add("visible");
+    tableWrap.style.display = "none";
+    viewMapBtn.classList.add("active");
+    viewListBtn.classList.remove("active");
+    initMap();
+    /* Leaflet needs a tick after display change to compute size */
+    setTimeout(function () {
+      _map.invalidateSize();
+      updateMapMarkers();
+    }, 100);
+  }
+
+  function showListView() {
+    _mapViewActive = false;
+    mapContainer.classList.remove("visible");
+    tableWrap.style.display = "";
+    viewListBtn.classList.add("active");
+    viewMapBtn.classList.remove("active");
+  }
+
+  viewListBtn.addEventListener("click", showListView);
+  viewMapBtn.addEventListener("click", showMapView);
 
   /* ── INIT ────────────────────────────────────────────────────── */
   loadLocalCache();
