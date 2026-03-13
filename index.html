@@ -730,7 +730,7 @@ table tbody tr.selected-row { background: var(--color-primary-highlight); }
 }
 
 /* ── STAGE BUTTON (shared desktop + mobile) ────────────── */
-.status-cell { position: relative; overflow: visible !important; }
+.status-cell { position: relative; overflow: hidden; text-overflow: ellipsis; }
 
 .stage-btn, .mc-stage-btn {
   display: inline-flex;
@@ -958,7 +958,7 @@ table tbody tr.selected-row { background: var(--color-primary-highlight); }
 }
 
 /* ── STAGE CELL OVERFLOW ──────────────────────────────── */
-.stage-cell { position: relative; overflow: visible !important; }
+.stage-cell { position: relative; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── MOBILE CARD CONTROLS ─────────────────────────────── */
 .mc-controls {
