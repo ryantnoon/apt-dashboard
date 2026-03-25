@@ -126,5 +126,9 @@
   "Franklin Tower": {
     "lat": 39.959,
     "lng": -75.1672
+  },
+  "Edgewater": {
+    "lat": 39.9573,
+    "lng": -75.1768
   }
 }
