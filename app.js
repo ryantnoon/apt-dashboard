@@ -134,20 +134,16 @@
   /* ── SUPABASE CLIENT ───────────────────────────────────────── */
   var _sb = null;
   var SB_CONFIG_KEY = "aptfinder_sb_config";
+  var _SB_URL = "https://haulmizpiiwbfwdtbawu.supabase.co";
+  var _SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhdWxtaXpwaWl3YmZ3ZHRiYXd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNjk0NDMsImV4cCI6MjA4ODg0NTQ0M30.G65sCz60hJLAs3KXB_vmdUyrV3XsEcGmt4_LfpE1grE";
 
   function getSBConfig() {
-    try {
-      var s = window["local" + "Storage"];
-      var cfg = s.getItem(SB_CONFIG_KEY);
-      return cfg ? JSON.parse(cfg) : null;
-    } catch (e) { return null; }
+    /* Hardcoded credentials — no manual config needed */
+    return { url: _SB_URL, key: _SB_KEY };
   }
 
   function saveSBConfig(url, key) {
-    try {
-      var s = window["local" + "Storage"];
-      s.setItem(SB_CONFIG_KEY, JSON.stringify({ url: url, key: key }));
-    } catch (e) { /* ignore */ }
+    /* No-op: credentials are hardcoded */
   }
 
   function initSupabase(url, key) {
@@ -1162,6 +1158,15 @@
       }
     }
     updateConfigBtnState();
+
+    /* Re-sync from Supabase when tab/app becomes visible (cross-device sync) */
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && sbConnected()) {
+        sbLoadAll().then(function () {
+          renderTable();
+        });
+      }
+    });
   }
 
   /* ── MAP VIEW ──────────────────────────────────────────────── */
